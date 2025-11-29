@@ -1,3 +1,4 @@
+// pages/api/cron/process-mint.js
 import prisma from "../../../lib/prisma";
 import { ethers } from "ethers";
 
@@ -37,7 +38,12 @@ export default async function handler(req, res) {
 
     console.log(`Processing Job ID: ${job.id} for User ${job.userId}`);
 
+    // Proses Minting
     const amountInWei = ethers.parseUnits(job.amount, 18);
+    
+    // GANTI LOGIKA WAIT: Di serverless, kita tidak boleh menunggu terlalu lama.
+    // Kita kirim transaksi, tapi tidak perlu await tx.wait() sampai selesai sepenuhnya di sini
+    // karena Vercel membatasi durasi fungsi (biasanya 10-60 detik).
     
     const tx = await tokenContract.mint(job.walletAddress, amountInWei);
     
