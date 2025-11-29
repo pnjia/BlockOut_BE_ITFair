@@ -1,13 +1,13 @@
-import prisma from '../../../lib/prisma';
-import { authMiddleware } from '../../../middleware/authMiddleware';
+import prisma from "../../../lib/prisma";
+import { authMiddleware } from "../../../middleware/authMiddleware";
 
 async function handler(req, res) {
   const userId = req.user.userId;
 
-  if (req.method === 'GET') {
+  if (req.method === "GET") {
     try {
       const user = await prisma.user.findUnique({
-        where: { id: userId }
+        where: { id: userId },
       });
 
       const sevenDaysAgo = new Date();
@@ -18,39 +18,45 @@ async function handler(req, res) {
         where: {
           userId: userId,
           createdAt: {
-            gte: sevenDaysAgo
+            gte: sevenDaysAgo,
           },
           status: {
-            not: 'FAILED' 
-          }
+            not: "FAILED",
+          },
         },
         orderBy: {
-          createdAt: 'asc'
-        }
+          createdAt: "asc",
+        },
       });
 
       const chartData = [];
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
       for (let i = 0; i < 7; i++) {
         const d = new Date();
         d.setDate(d.getDate() - (6 - i));
         const dayName = days[d.getDay()];
-        const dateString = d.toISOString().split('T')[0];
+        const dateString = d.toISOString().split("T")[0];
 
-        const dayWorkouts = recentWorkouts.filter(w => 
+        const dayWorkouts = recentWorkouts.filter((w) =>
           w.createdAt.toISOString().startsWith(dateString)
         );
 
-        const sitUpCount = dayWorkouts.filter(w => w.workoutType === 'SIT_UP').length;
-        const squatCount = dayWorkouts.filter(w => w.workoutType === 'SQUAT').length;
-        const pushUpFreq = dayWorkouts.filter(w => w.workoutType === 'PUSH_UP').length;
+        const sitUpCount = dayWorkouts.filter(
+          (w) => w.workoutType === "SIT_UP"
+        ).length;
+        const squatCount = dayWorkouts.filter(
+          (w) => w.workoutType === "SQUAT"
+        ).length;
+        const pushUpFreq = dayWorkouts.filter(
+          (w) => w.workoutType === "PUSH_UP"
+        ).length;
 
         chartData.push({
           day: dayName,
           PushUp: pushUpFreq * 10,
           SitUp: sitUpCount * 10,
-          Squat: squatCount * 10
+          Squat: squatCount * 10,
         });
       }
 
@@ -58,17 +64,17 @@ async function handler(req, res) {
         user: {
           name: `${user.firstName} ${user.lastName}`,
           email: user.email,
-          streak: user.dayStreak
+          streak: user.dayStreak,
         },
-        statistics: chartData
+        statistics: chartData,
       });
-
     } catch (error) {
-      return res.status(500).json({ error: 'Failed to fetch profile' });
+      return res.status(500).json({ error: "Failed to fetch profile" });
     }
   }
 
-  return res.status(405).end();
+  res.setHeader("Allow", "GET,OPTIONS");
+  return res.status(405).json({ error: "Method Not Allowed" });
 }
 
 export default authMiddleware(handler);

@@ -1,30 +1,33 @@
-import prisma from '../../../lib/prisma';
-import bcrypt from 'bcryptjs';
+import prisma from "../../../lib/prisma";
+import bcrypt from "bcryptjs";
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).end();
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST,OPTIONS");
+    return res.status(405).json({ error: "Method Not Allowed" });
+  }
 
   const { phoneNumber, resetToken, newPassword } = req.body;
 
   if (!phoneNumber || !resetToken || !newPassword) {
-    return res.status(400).json({ error: 'All fields are required' });
+    return res.status(400).json({ error: "All fields are required" });
   }
 
   try {
     const user = await prisma.user.findFirst({
-      where: { phoneNumber }
+      where: { phoneNumber },
     });
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
 
     if (user.resetToken !== resetToken) {
-      return res.status(400).json({ error: 'Invalid reset token' });
+      return res.status(400).json({ error: "Invalid reset token" });
     }
 
     if (new Date() > new Date(user.resetTokenExpiry)) {
-      return res.status(400).json({ error: 'Reset token has expired' });
+      return res.status(400).json({ error: "Reset token has expired" });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -34,14 +37,15 @@ export default async function handler(req, res) {
       data: {
         passwordHash: hashedPassword,
         resetToken: null,
-        resetTokenExpiry: null
-      }
+        resetTokenExpiry: null,
+      },
     });
 
-    res.status(200).json({ success: true, message: 'Password has been reset successfully' });
-
+    res
+      .status(200)
+      .json({ success: true, message: "Password has been reset successfully" });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: "Internal server error" });
   }
 }
