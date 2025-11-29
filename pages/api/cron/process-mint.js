@@ -92,3 +92,5 @@ export default async function handler(req, res) {
     });
   }
 }
+
+// Trigger deploy ulang
