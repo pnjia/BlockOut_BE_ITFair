@@ -3,16 +3,13 @@ import runCors from "../../../lib/cors";
 import { generateTokens, verifyRefreshToken } from "../../../lib/jwt";
 
 export default async function handler(req, res) {
-  // handle CORS preflight; runCors returns true when it answered OPTIONS
   if (runCors(req, res)) return;
 
-  // allow GET (for quick testing via query) and POST (recommended)
   if (req.method !== "POST" && req.method !== "GET") {
     res.setHeader("Allow", "GET,POST,OPTIONS");
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // accept token either in body (POST) or query (GET)
   const refreshToken =
     req.method === "POST" ? req.body?.refreshToken : req.query?.refreshToken;
 

@@ -3,13 +3,11 @@ import runCors from "../lib/cors";
 
 export const authMiddleware = (handler) => {
   return async (req, res) => {
-    // Helpful debug log for Vercel logs to trace incoming method/path/origin
     try {
       console.log(
         `[auth] ${req.method} ${req.url} origin=${req.headers.origin || ""}`
       );
     } catch (e) {
-      // ignore logging errors
     }
 
     if (runCors(req, res)) return;
@@ -21,7 +19,6 @@ export const authMiddleware = (handler) => {
       }
 
       const token = authorization.replace("Bearer ", "");
-      // Verifikasi Access Token (Umur pendek 15 menit)
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
       req.user = decoded;

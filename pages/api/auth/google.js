@@ -6,24 +6,40 @@ import { generateTokens } from '../../../lib/jwt';
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(CLIENT_ID);
 
+/**
+ * Memverifikasi ID Token yang dikirim dari Frontend langsung ke Server Google.
+ */
 async function verifyGoogleToken(idToken) {
-  const ticket = await client.verifyIdToken({
-    idToken: idToken,
-    audience: CLIENT_ID, 
-  });
-  return ticket.getPayload();
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: idToken,
+      audience: CLIENT_ID, 
+    });
+    return ticket.getPayload();
+  } catch (error) {
+    console.error("Google Verify Error:", error.message);
+    throw new Error("Token Google tidak valid atau kadaluwarsa.");
+  }
 }
 
+/**
+ * Mencari user berdasarkan email. Jika tidak ada, buat baru.
+ * Otomatis mengambil foto profil dari Google jika tersedia.
+ */
 async function findOrCreateUser(payload) {
-  const { email, given_name, family_name } = payload;
+  const { email, given_name, family_name, picture } = payload;
+
   let user = await prisma.user.findUnique({ where: { email } });
 
   if (!user) {
+    console.log(`Creating new user from Google: ${email}`);
     user = await prisma.user.create({
       data: {
         email,
         firstName: given_name || "User",
         lastName: family_name || "",
+        avatarUrl: picture || "", 
+        
         avatarGender: "MALE", 
         equippedTop: "starter_hair",
         equippedShirt: "starter_shirt",
@@ -31,7 +47,9 @@ async function findOrCreateUser(payload) {
         equippedShoes: "starter_shoes"
       }
     });
-  }
+  } else {
+}
+
   return user;
 }
 
@@ -43,10 +61,13 @@ export default async function handler(req, res) {
   }
 
   const { idToken } = req.body;
-  if (!idToken) return res.status(400).json({ error: 'Missing idToken' });
+  if (!idToken) {
+    return res.status(400).json({ error: 'ID Token (idToken) wajib dikirim.' });
+  }
 
   try {
     const googlePayload = await verifyGoogleToken(idToken);
+    
     const user = await findOrCreateUser(googlePayload);
     
     const { accessToken, refreshToken } = generateTokens(user.id);
@@ -57,19 +78,24 @@ export default async function handler(req, res) {
     });
 
     return res.status(200).json({
-      message: 'Google Login success',
+      message: 'Google Login berhasil',
       accessToken,
       refreshToken,
       user: {
         id: user.id,
         firstName: user.firstName,
+        lastName: user.lastName,
         email: user.email,
-        isNewUser: !user.createdAt 
+        avatarUrl: user.avatarUrl,
+        isNewUser: Date.now() - new Date(user.createdAt).getTime() < 60000 
       }
     });
 
   } catch (error) {
-    console.error("API Error:", error.message);
-    return res.status(401).json({ error: 'Invalid Google Token' });
+    console.error("API Google Auth Error:", error.message);
+    
+    return res.status(401).json({ 
+      error: error.message || 'Gagal memproses login dengan Google.' 
+    });
   }
 }
