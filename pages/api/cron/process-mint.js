@@ -5,47 +5,52 @@ import { ethers } from "ethers";
 const rpcUrl = process.env.RPC_URL;
 const minterKey = process.env.MINTER_PRIVATE_KEY;
 const contractAddr = process.env.CONTRACT_ADDRESS;
+const cronSecret = process.env.CRON_SECRET;
 
 export default async function handler(req, res) {
 
   const authHeader = req.headers.authorization;
-  if (req.headers['user-agent'] !== 'vercel-cron/1.0' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const isVercelCron = req.headers['user-agent'] === 'vercel-cron/1.0';
+  const isAuthorized = authHeader === `Bearer ${cronSecret}`;
+
+  if (!isVercelCron && !isAuthorized && cronSecret) {
+    return res.status(401).json({ error: "Unauthorized: Invalid Token" });
   }
 
   if (!rpcUrl || !minterKey || !contractAddr) {
-    return res.status(500).json({ error: "Environment variables missing" });
-  }
-
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const wallet = new ethers.Wallet(minterKey, provider);
-  const contractABI = ["function mint(address to, uint256 amount) public"];
-  const tokenContract = new ethers.Contract(contractAddr, contractABI, wallet);
-
-  const job = await prisma.transactionQueue.findFirst({
-    where: { status: 'PENDING' },
-    orderBy: { createdAt: 'asc' }
-  });
-
-  if (!job) {
-    return res.status(200).json({ message: "No pending jobs found." });
+    console.error("Missing Environment Variables");
+    return res.status(500).json({ error: "Server misconfiguration (Env Vars)" });
   }
 
   try {
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const wallet = new ethers.Wallet(minterKey, provider);
+    const contractABI = ["function mint(address to, uint256 amount) public"];
+    const tokenContract = new ethers.Contract(contractAddr, contractABI, wallet);
+
+    const job = await prisma.transactionQueue.findFirst({
+      where: { status: 'PENDING' },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    if (!job) {
+      return res.status(200).json({ message: "No pending jobs found." });
+    }
+
     await prisma.transactionQueue.update({
       where: { id: job.id },
       data: { status: 'PROCESSING' }
     });
 
-    console.log(`Processing Job ID: ${job.id} for User ${job.userId}`);
+    console.log(`Processing Job ID: ${job.id} for Wallet ${job.walletAddress}`);
 
-    // Proses Minting
     const amountInWei = ethers.parseUnits(job.amount, 18);
-    
-    // GANTI LOGIKA WAIT: Di serverless, kita tidak boleh menunggu terlalu lama.
-    // Kita kirim transaksi, tapi tidak perlu await tx.wait() sampai selesai sepenuhnya di sini
-    // karena Vercel membatasi durasi fungsi (biasanya 10-60 detik).
-    
-    const tx = await tokenContract.mint(job.walletAddress, amountInWei);
+
+    const txOptions = {
+      gasLimit: 500000 
+    };
+
+    const tx = await tokenContract.mint(job.walletAddress, amountInWei, txOptions);
     
     await prisma.transactionQueue.update({
       where: { id: job.id },
@@ -57,21 +62,15 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ 
       success: true, 
-      message: `Job ${job.id} sent to blockchain`, 
+      message: `Job ${job.id} broadcasted to blockchain`, 
       txHash: tx.hash 
     });
 
   } catch (error) {
-    console.error(`Job ${job.id} Failed:`, error.message);
+    console.error(`Job Failed:`, error);
     
-    await prisma.transactionQueue.update({
-      where: { id: job.id },
-      data: { 
-        status: 'FAILED',
-        errorMessage: error.message
-      }
+    return res.status(500).json({ 
+      error: error.message || "Internal Server Error" 
     });
-
-    return res.status(500).json({ error: error.message });
   }
 }
